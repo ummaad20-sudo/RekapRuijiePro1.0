@@ -1,57 +1,91 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.popup import Popup
+
 from openpyxl import load_workbook
 from collections import defaultdict
 from datetime import datetime
+
+# Android imports
+from android import activity
+from jnius import autoclass
+import tempfile
+
 
 class RekapApp(App):
 
     def build(self):
         self.layout = BoxLayout(orientation='vertical')
 
-        self.label = Label(text="Rekap Data Ruijie Pro", size_hint=(1, 0.1))
+        self.label = Label(
+            text="Rekap Data Ruijie Pro",
+            size_hint=(1, 0.1)
+        )
         self.layout.add_widget(self.label)
 
-        self.result_label = Label(text="", size_hint_y=None)
-        self.result_label.bind(texture_size=self.result_label.setter('size'))
+        self.result_label = Label(
+            text="",
+            size_hint_y=None
+        )
+        self.result_label.bind(
+            texture_size=self.result_label.setter('size')
+        )
 
         scroll = ScrollView()
         scroll.add_widget(self.result_label)
-
         self.layout.add_widget(scroll)
 
-        btn = Button(text="Pilih File Excel", size_hint=(1, 0.1))
+        btn = Button(
+            text="Pilih File Excel",
+            size_hint=(1, 0.1)
+        )
         btn.bind(on_press=self.buka_file)
         self.layout.add_widget(btn)
 
         return self.layout
 
+    # =========================
+    # ANDROID FILE PICKER (SAF)
+    # =========================
     def buka_file(self, instance):
-        content = FileChooserListView()
-        popup = Popup(title="Pilih File Excel",
-                      content=content,
-                      size_hint=(0.9, 0.9))
+        Intent = autoclass('android.content.Intent')
+        intent = Intent(Intent.ACTION_GET_CONTENT)
+        intent.setType("*/*")
+        intent.addCategory(Intent.CATEGORY_OPENABLE)
 
-        content.bind(on_submit=lambda x, selection, touch: self.proses_file(selection, popup))
-        popup.open()
+        activity.bind(on_activity_result=self.on_file_selected)
+        activity.startActivityForResult(intent, 1)
 
-    def proses_file(self, selection, popup):
-        if not selection:
-            return
+    def on_file_selected(self, request_code, result_code, intent):
+        if request_code == 1 and result_code == -1:
+            uri = intent.getData()
+            if uri:
+                self.baca_file_dari_uri(uri)
 
-        file_path = selection[0]
-        popup.dismiss()
+    def baca_file_dari_uri(self, uri):
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        context = PythonActivity.mActivity
+        resolver = context.getContentResolver()
+        input_stream = resolver.openInputStream(uri)
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.write(input_stream.read())
+        temp_file.close()
+
+        self.proses_file(temp_file.name)
+
+    # =========================
+    # PROSES EXCEL
+    # =========================
+    def proses_file(self, file_path):
 
         try:
             wb = load_workbook(file_path)
             sheet = wb.active
-        except:
-            self.result_label.text = "Gagal membuka file!"
+        except Exception as e:
+            self.result_label.text = f"Gagal membuka file!\n{str(e)}"
             return
 
         rekap_detail = defaultdict(lambda: {"jumlah": 0, "total": 0})
@@ -73,6 +107,7 @@ class RekapApp(App):
             tanggal_full = row[kolom_tanggal]
 
             if grup and harga and tanggal_full:
+
                 if isinstance(tanggal_full, datetime):
                     tanggal = tanggal_full.strftime("%Y/%m/%d")
                 else:
@@ -92,6 +127,7 @@ class RekapApp(App):
         tanggal_terakhir = None
 
         for (tanggal, grup), data in sorted(rekap_detail.items()):
+
             if tanggal_terakhir and tanggal != tanggal_terakhir:
                 hasil += f">>> TOTAL {tanggal_terakhir} : Rp {rekap_tanggal[tanggal_terakhir]}\n"
                 hasil += "-----------------------------\n"
