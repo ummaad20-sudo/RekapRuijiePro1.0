@@ -9,6 +9,10 @@ from openpyxl import load_workbook
 from collections import defaultdict
 from datetime import datetime
 
+# Android modern access
+from jnius import autoclass
+import tempfile
+
 
 class RekapApp(App):
 
@@ -22,7 +26,7 @@ class RekapApp(App):
         self.layout.add_widget(self.label)
 
         self.result_label = Label(
-            text="",
+            text="Klik 'Pilih File Excel' untuk mulai",
             size_hint_y=None
         )
         self.result_label.bind(
@@ -40,35 +44,44 @@ class RekapApp(App):
         btn.bind(on_press=self.buka_file)
         self.layout.add_widget(btn)
 
+        # Bind Activity Result (Android only)
+        if platform == "android":
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            activity = PythonActivity.mActivity
+            activity.bind(onActivityResult=self.on_activity_result)
+
         return self.layout
 
     # =========================
-    # FILE PICKER ANDROID (ANTI CRASH)
+    # ANDROID FILE PICKER (MODERN & STABLE)
     # =========================
     def buka_file(self, instance):
 
         if platform != "android":
-            self.result_label.text = "Fitur hanya berjalan di Android"
+            self.result_label.text = "Fitur ini hanya tersedia di Android"
             return
 
         try:
-            from android import activity
-            from jnius import autoclass
-
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
             Intent = autoclass('android.content.Intent')
+
+            activity = PythonActivity.mActivity
+
             intent = Intent(Intent.ACTION_GET_CONTENT)
             intent.setType("*/*")
             intent.addCategory(Intent.CATEGORY_OPENABLE)
 
-            activity.bind(on_activity_result=self.on_file_selected)
             activity.startActivityForResult(intent, 1)
+
+            self.result_label.text = "Silakan pilih file Excel..."
 
         except Exception as e:
             self.result_label.text = f"Gagal membuka file picker:\n{str(e)}"
 
-    def on_file_selected(self, request_code, result_code, intent):
+    def on_activity_result(self, requestCode, resultCode, intent):
+
         try:
-            if request_code == 1 and result_code == -1 and intent:
+            if requestCode == 1 and resultCode == -1 and intent:
                 uri = intent.getData()
                 if uri:
                     self.baca_file_dari_uri(uri)
@@ -76,13 +89,12 @@ class RekapApp(App):
             self.result_label.text = f"Error memilih file:\n{str(e)}"
 
     def baca_file_dari_uri(self, uri):
-        try:
-            from jnius import autoclass
-            import tempfile
 
+        try:
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
             context = PythonActivity.mActivity
             resolver = context.getContentResolver()
+
             input_stream = resolver.openInputStream(uri)
 
             temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -103,7 +115,7 @@ class RekapApp(App):
             wb = load_workbook(file_path)
             sheet = wb.active
         except Exception as e:
-            self.result_label.text = f"Gagal membuka file!\n{str(e)}"
+            self.result_label.text = f"Gagal membuka file Excel:\n{str(e)}"
             return
 
         rekap_detail = defaultdict(lambda: {"jumlah": 0, "total": 0})
@@ -116,10 +128,11 @@ class RekapApp(App):
             kolom_harga = header.index("Harga")
             kolom_tanggal = header.index("Diaktifkan di")
         except:
-            self.result_label.text = "Header tidak sesuai!"
+            self.result_label.text = "Header tidak sesuai!\nPastikan kolom benar."
             return
 
         for row in sheet.iter_rows(min_row=2, values_only=True):
+
             grup = row[kolom_grup]
             harga = row[kolom_harga]
             tanggal_full = row[kolom_tanggal]
