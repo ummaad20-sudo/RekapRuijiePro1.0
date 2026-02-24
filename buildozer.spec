@@ -6,7 +6,7 @@ package.domain = com.ruijie
 source.dir = .
 source.include_exts = py,png,jpg,kv
 version = 1.0
-requirements = python3,kivy,openpyxl
+requirements = python3,kivy,openpyxl,et_xmlfile
 orientation = portrait
 fullscreen = 0
 
