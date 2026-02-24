@@ -13,36 +13,52 @@ from collections import defaultdict
 class RekapApp(App):
 
     def build(self):
-        self.layout = BoxLayout(orientation="vertical", padding=10, spacing=10)
+        root = BoxLayout(orientation="vertical", padding=10, spacing=10)
 
-        self.label = Label(text="Rekap Excel", size_hint=(1, 0.1))
-        self.layout.add_widget(self.label)
+        # ===== JUDUL DI ATAS =====
+        title = Label(
+            text="REKAP PENJUALAN EXCEL",
+            size_hint=(1, 0.1),
+            color=(0, 0, 0, 1)
+        )
+        root.add_widget(title)
 
-        self.btn = Button(text="Pilih File Excel", size_hint=(1, 0.1))
-        self.btn.bind(on_press=self.buka_file)
-        self.layout.add_widget(self.btn)
+        # ===== AREA HASIL (TENGAH & BESAR) =====
+        scroll = ScrollView(size_hint=(1, 0.8))
 
-        self.output = TextInput(readonly=True)
-        scroll = ScrollView()
+        self.output = TextInput(
+            readonly=True,
+            size_hint_y=None,
+            text="Hasil rekap akan tampil di sini...",
+            foreground_color=(0, 0, 0, 1),
+            background_color=(1, 1, 1, 1)
+        )
+
+        self.output.bind(minimum_height=self.output.setter('height'))
         scroll.add_widget(self.output)
-        self.layout.add_widget(scroll)
+        root.add_widget(scroll)
 
-        return self.layout
+        # ===== TOMBOL DI PALING BAWAH =====
+        btn = Button(
+            text="Pilih File Excel",
+            size_hint=(1, 0.1),
+            background_color=(0.2, 0.6, 1, 1)
+        )
+        btn.bind(on_press=self.buka_file)
+        root.add_widget(btn)
+
+        return root
 
     def buka_file(self, instance):
-        try:
-            filechooser.open_file(
-                title="Pilih File Excel",
-                filters=[("Excel Files", "*.xlsx")],
-                on_selection=self.file_selected
-            )
-        except Exception as e:
-            self.output.text = f"Gagal membuka file picker:\n{e}"
+        filechooser.open_file(
+            title="Pilih File Excel",
+            filters=[("Excel Files", "*.xlsx")],
+            on_selection=self.file_selected
+        )
 
     def file_selected(self, selection):
         if selection:
-            file_path = selection[0]
-            self.proses_excel(file_path)
+            self.proses_excel(selection[0])
 
     def proses_excel(self, file_path):
         try:
@@ -52,20 +68,21 @@ class RekapApp(App):
             rekap = defaultdict(int)
 
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                tanggal = row[11]  # Kolom L (index 11)
-                harga = row[4]     # Kolom E (index 4)
+                tanggal = row[11]  # Kolom L
+                harga = row[4]     # Kolom E
 
                 if tanggal and harga:
                     rekap[str(tanggal)[:10]] += int(harga)
 
             hasil = "=== REKAP PER TANGGAL ===\n\n"
-            for tgl, total in rekap.items():
+
+            for tgl, total in sorted(rekap.items()):
                 hasil += f"{tgl} : Rp {total:,}\n"
 
             self.output.text = hasil
 
         except Exception as e:
-            self.output.text = f"Gagal membaca file:\n{e}"
+            self.output.text = f"Terjadi kesalahan:\n{e}"
 
 
 if __name__ == "__main__":
