@@ -6,7 +6,7 @@ package.domain = com.ruijie
 source.dir = .
 source.include_exts = py,png,jpg,kv
 version = 1.0
-requirements = python3,kivy,openpyxl,et_xmlfile,defusedxml
+requirements = python3,kivy,openpyxl,et_xmlfile,android
 orientation = portrait
 fullscreen = 0
 
@@ -14,7 +14,7 @@ fullscreen = 0
 log_level = 2
 
 [app:android]
-android.permissions = READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+android.permissions = READ_EXTERNAL_STORAGE
 android.api = 33
 android.minapi = 21
 android.sdk = 33
