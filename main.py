@@ -3,15 +3,11 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.utils import platform
 
 from openpyxl import load_workbook
 from collections import defaultdict
 from datetime import datetime
-
-# Android imports
-from android import activity
-from jnius import autoclass
-import tempfile
 
 
 class RekapApp(App):
@@ -47,34 +43,56 @@ class RekapApp(App):
         return self.layout
 
     # =========================
-    # ANDROID FILE PICKER (SAF)
+    # FILE PICKER ANDROID (ANTI CRASH)
     # =========================
     def buka_file(self, instance):
-        Intent = autoclass('android.content.Intent')
-        intent = Intent(Intent.ACTION_GET_CONTENT)
-        intent.setType("*/*")
-        intent.addCategory(Intent.CATEGORY_OPENABLE)
 
-        activity.bind(on_activity_result=self.on_file_selected)
-        activity.startActivityForResult(intent, 1)
+        if platform != "android":
+            self.result_label.text = "Fitur hanya berjalan di Android"
+            return
+
+        try:
+            from android import activity
+            from jnius import autoclass
+
+            Intent = autoclass('android.content.Intent')
+            intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.setType("*/*")
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+            activity.bind(on_activity_result=self.on_file_selected)
+            activity.startActivityForResult(intent, 1)
+
+        except Exception as e:
+            self.result_label.text = f"Gagal membuka file picker:\n{str(e)}"
 
     def on_file_selected(self, request_code, result_code, intent):
-        if request_code == 1 and result_code == -1:
-            uri = intent.getData()
-            if uri:
-                self.baca_file_dari_uri(uri)
+        try:
+            if request_code == 1 and result_code == -1 and intent:
+                uri = intent.getData()
+                if uri:
+                    self.baca_file_dari_uri(uri)
+        except Exception as e:
+            self.result_label.text = f"Error memilih file:\n{str(e)}"
 
     def baca_file_dari_uri(self, uri):
-        PythonActivity = autoclass('org.kivy.android.PythonActivity')
-        context = PythonActivity.mActivity
-        resolver = context.getContentResolver()
-        input_stream = resolver.openInputStream(uri)
+        try:
+            from jnius import autoclass
+            import tempfile
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        temp_file.write(input_stream.read())
-        temp_file.close()
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            context = PythonActivity.mActivity
+            resolver = context.getContentResolver()
+            input_stream = resolver.openInputStream(uri)
 
-        self.proses_file(temp_file.name)
+            temp_file = tempfile.NamedTemporaryFile(delete=False)
+            temp_file.write(input_stream.read())
+            temp_file.close()
+
+            self.proses_file(temp_file.name)
+
+        except Exception as e:
+            self.result_label.text = f"Gagal membaca file:\n{str(e)}"
 
     # =========================
     # PROSES EXCEL
