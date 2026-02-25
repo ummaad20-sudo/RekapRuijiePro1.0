@@ -9,12 +9,12 @@ source.include_exts = py,png,jpg,kv
 
 version = 1.0
 
-requirements = python3,kivy,openpyxl,et_xmlfile
+requirements = python3,kivy,openpyxl
 
 orientation = portrait
 fullscreen = 0
 
-android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
+android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
 android.api = 33
 android.minapi = 21
