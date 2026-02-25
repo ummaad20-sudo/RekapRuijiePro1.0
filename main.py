@@ -1,108 +1,115 @@
+# -*- coding: utf-8 -*-
+# Rekap Ruijie Pro — Versi Pydroid3 Review
+# Pembuat: Jun
+
+import os
+from threading import Thread
+
 from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.uix.label import Label
-from kivy.uix.scrollview import ScrollView
+from kivy.lang import Builder
 from kivy.clock import Clock
-from kivy.utils import platform
+from kivy.properties import StringProperty, NumericProperty
 
 from openpyxl import load_workbook
-from collections import defaultdict
-from datetime import datetime
 
-# 🔥 PENTING
-if platform == "android":
-    from android.permissions import request_permissions, Permission
-    from plyer import filechooser
+KV = '''
+<Root>:
+    orientation: 'vertical'
+    padding: dp(16)
+    spacing: dp(12)
+
+    Label:
+        text: 'Rekap Ruijie Pro (by Jun)'
+        font_size: '20sp'
+        size_hint_y: None
+        height: dp(40)
+
+    Button:
+        text: 'Pilih File Excel'
+        size_hint_y: None
+        height: dp(48)
+        on_release: root.pick_file()
+
+    Label:
+        text: root.file_label
+        halign: 'left'
+        valign: 'middle'
+        text_size: self.size
+
+    Label:
+        text: 'Total Baris: ' + str(root.total_rows)
+
+    Label:
+        text: 'Total Rupiah: ' + root.total_rupiah
+'''
+
+
+def format_rupiah(value):
+    try:
+        return 'Rp {:,}'.format(int(value)).replace(',', '.')
+    except Exception:
+        return 'Rp 0'
+
+
+class Root(App.get_running_app().__class__ if App.get_running_app() else object):
+    pass
+
+
+from kivy.uix.boxlayout import BoxLayout
+
+
+class Root(BoxLayout):
+    file_label = StringProperty('Belum ada file dipilih')
+    total_rows = NumericProperty(0)
+    total_rupiah = StringProperty('Rp 0')
+
+    def pick_file(self):
+        # Untuk Pydroid3: hardcode path contoh
+        # Silakan ganti path ini sesuai lokasi file Excel Anda
+        example_path = '/sdcard/Download/Voucher.xlsx'
+
+        if not os.path.exists(example_path):
+            self.file_label = 'File tidak ditemukan di: ' + example_path
+            return
+
+        self.file_label = 'Memproses: ' + os.path.basename(example_path)
+        Thread(target=self.process_file, args=(example_path,), daemon=True).start()
+
+    def process_file(self, path):
+        try:
+            wb = load_workbook(path, data_only=True)
+            ws = wb.active
+
+            total = 0
+            rows = 0
+
+            data_iter = list(ws.iter_rows(min_row=2, values_only=True))
+
+            for row in data_iter:
+                try:
+                    price = row[4] if len(row) > 4 and row[4] is not None else 0
+                    if isinstance(price, (int, float)):
+                        total += price
+                        rows += 1
+                except Exception:
+                    pass
+
+            Clock.schedule_once(lambda dt: self.finish(rows, total))
+
+        except Exception as e:
+            Clock.schedule_once(lambda dt: setattr(self, 'file_label', f'Error: {e}'))
+
+    def finish(self, rows, total):
+        self.total_rows = rows
+        self.total_rupiah = format_rupiah(total)
+        self.file_label = 'Selesai diproses'
 
 
 class RekapApp(App):
-
     def build(self):
-        root = BoxLayout(orientation='vertical', padding=10, spacing=10)
-
-        title = Label(text="Rekap Data Ruijie Pro", size_hint=(1, 0.1))
-        root.add_widget(title)
-
-        self.result_label = Label(
-            text="Menunggu file Excel...",
-            size_hint_y=None,
-            halign="left",
-            valign="top"
-        )
-        self.result_label.bind(
-            texture_size=lambda inst, val: setattr(inst, 'height', val[1])
-        )
-
-        scroll = ScrollView()
-        scroll.add_widget(self.result_label)
-        root.add_widget(scroll)
-
-        btn = Button(text="Pilih File Excel", size_hint=(1, 0.1))
-        btn.bind(on_press=self.buka_file)
-        root.add_widget(btn)
-
-        Clock.schedule_once(self.request_android_permissions, 1)
-
-        return root
-
-    # =========================
-    # 🔐 permission
-    # =========================
-    def request_android_permissions(self, dt):
-        if platform == "android":
-            request_permissions([
-                Permission.READ_MEDIA_IMAGES,
-                Permission.READ_MEDIA_VIDEO,
-                Permission.READ_MEDIA_AUDIO,
-                Permission.READ_EXTERNAL_STORAGE
-            ])
-
-    # =========================
-    # 📂 buka file (ANDROID 14 FIX)
-    # =========================
-    def buka_file(self, instance):
-        try:
-            filechooser.open_file(
-                title="Pilih File Excel",
-                filters=[("Excel", "*.xlsx"), ("Excel", "*.xls")],
-                on_selection=self.proses_file
-            )
-        except Exception as e:
-            self.result_label.text = f"Gagal membuka file picker:\n{e}"
-
-    # =========================
-    # 📊 proses
-    # =========================
-    def proses_file(self, selection):
-        if not selection:
-            return
-
-        file_path = selection[0]
-
-        try:
-            wb = load_workbook(file_path)
-            sheet = wb.active
-        except Exception as e:
-            self.result_label.text = f"Gagal membuka file:\n{e}"
-            return
-
-        rekap = defaultdict(int)
-
-        for row in sheet.iter_rows(min_row=2, values_only=True):
-            try:
-                tanggal = str(row[11])[:10]
-                harga = int(row[4])
-                rekap[tanggal] += harga
-            except:
-                continue
-
-        hasil = "===== HASIL REKAP =====\n\n"
-        for tgl, total in sorted(rekap.items()):
-            hasil += f"{tgl} : Rp {total:,}\n"
-
-        self.result_label.text = hasil
+        Builder.load_string(KV)
+        return Root()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     RekapApp().run()
