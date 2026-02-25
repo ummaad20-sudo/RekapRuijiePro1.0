@@ -14,7 +14,7 @@ requirements = python3,kivy,openpyxl,plyer
 orientation = portrait
 fullscreen = 0
 
-android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
+android.permissions = READ_EXTERNAL_STORAGE
 
 android.api = 34
 android.minapi = 24
