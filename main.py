@@ -1,4 +1,21 @@
 import os
+
+# =====================================
+# ANDROID PERMISSIONS (PENTING)
+# =====================================
+try:
+    from android.permissions import request_permissions, Permission
+    request_permissions([
+        Permission.READ_EXTERNAL_STORAGE,
+        Permission.WRITE_EXTERNAL_STORAGE,
+        Permission.MANAGE_EXTERNAL_STORAGE
+    ])
+except Exception:
+    pass
+
+# =====================================
+# IMPORT
+# =====================================
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -15,75 +32,111 @@ class RekapApp(App):
     def build(self):
         root = BoxLayout(orientation="vertical", padding=10, spacing=10)
 
-        # ===== JUDUL DI ATAS =====
         title = Label(
-            text="REKAP PENJUALAN EXCEL",
-            size_hint=(1, 0.1),
-            color=(0, 0, 0, 1)
+            text="Rekap Excel",
+            size_hint=(1, 0.1)
         )
         root.add_widget(title)
 
-        # ===== AREA HASIL (TENGAH & BESAR) =====
-        scroll = ScrollView(size_hint=(1, 0.8))
-
-        self.output = TextInput(
-            readonly=True,
-            size_hint_y=None,
-            text="Hasil rekap akan tampil di sini...",
-            foreground_color=(0, 0, 0, 1),
-            background_color=(1, 1, 1, 1)
-        )
-
-        self.output.bind(minimum_height=self.output.setter('height'))
-        scroll.add_widget(self.output)
-        root.add_widget(scroll)
-
-        # ===== TOMBOL DI PALING BAWAH =====
         btn = Button(
             text="Pilih File Excel",
-            size_hint=(1, 0.1),
-            background_color=(0.2, 0.6, 1, 1)
+            size_hint=(1, 0.1)
         )
         btn.bind(on_press=self.buka_file)
         root.add_widget(btn)
 
+        # output scrollable
+        self.output = TextInput(
+            readonly=True,
+            size_hint_y=None
+        )
+        self.output.bind(minimum_height=self.output.setter("height"))
+
+        scroll = ScrollView()
+        scroll.add_widget(self.output)
+        root.add_widget(scroll)
+
         return root
 
+    # =====================================
+    # FILE PICKER
+    # =====================================
     def buka_file(self, instance):
-        filechooser.open_file(
-            title="Pilih File Excel",
-            filters=[("Excel Files", "*.xlsx")],
-            on_selection=self.file_selected
-        )
+        try:
+            filechooser.open_file(
+                title="Pilih File Excel",
+                path="/sdcard/Download",  # ⭐ penting Android
+                filters=["*.xlsx"],       # ⭐ lebih kompatibel
+                on_selection=self.file_selected
+            )
+        except Exception as e:
+            self.output.text = f"Gagal membuka file picker:\n{e}"
 
     def file_selected(self, selection):
-        if selection:
-            self.proses_excel(selection[0])
+        if not selection:
+            self.output.text = "Tidak ada file dipilih."
+            return
 
+        file_path = selection[0]
+        self.proses_excel(file_path)
+
+    # =====================================
+    # PROSES EXCEL
+    # =====================================
     def proses_excel(self, file_path):
         try:
-            wb = load_workbook(file_path)
+            if not os.path.exists(file_path):
+                self.output.text = f"File tidak ditemukan:\n{file_path}"
+                return
+
+            wb = load_workbook(file_path, data_only=True)
             sheet = wb.active
 
             rekap = defaultdict(int)
 
             for row in sheet.iter_rows(min_row=2, values_only=True):
-                tanggal = row[11]  # Kolom L
-                harga = row[4]     # Kolom E
 
-                if tanggal and harga:
-                    rekap[str(tanggal)[:10]] += int(harga)
+                # guard kolom
+                if not row or len(row) < 12:
+                    continue
 
+                tanggal = row[11]  # kolom L
+                harga = row[4]     # kolom E
+
+                if not tanggal or harga is None:
+                    continue
+
+                # konversi harga aman
+                try:
+                    nilai = int(float(str(harga).replace(",", "")))
+                except Exception:
+                    nilai = 0
+
+                tgl_str = str(tanggal)[:10]
+                rekap[tgl_str] += nilai
+
+            # =====================================
+            # OUTPUT
+            # =====================================
             hasil = "=== REKAP PER TANGGAL ===\n\n"
 
-            for tgl, total in sorted(rekap.items()):
+            grand_total = 0
+            for tgl in sorted(rekap.keys()):
+                total = rekap[tgl]
+                grand_total += total
                 hasil += f"{tgl} : Rp {total:,}\n"
+
+            hasil += "\n===========================\n"
+            hasil += f"GRAND TOTAL : Rp {grand_total:,}\n"
 
             self.output.text = hasil
 
         except Exception as e:
-            self.output.text = f"Terjadi kesalahan:\n{e}"
+            self.output.text = f"Gagal membaca file:\n{e}"
 
 
+# =====================================
+# RUN
+# =====================================
 if __name__ == "__main__":
     RekapApp().run()
