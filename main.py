@@ -1,21 +1,3 @@
-import os
-
-# =============================
-# ANDROID PERMISSION RUNTIME
-# =============================
-try:
-    from android.permissions import request_permissions, Permission
-    request_permissions([
-        Permission.READ_EXTERNAL_STORAGE,
-        Permission.WRITE_EXTERNAL_STORAGE,
-        Permission.MANAGE_EXTERNAL_STORAGE,
-    ])
-except Exception:
-    pass
-
-# =============================
-# IMPORT
-# =============================
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
@@ -23,9 +5,12 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
+from kivy.utils import platform
+
 from openpyxl import load_workbook
 from collections import defaultdict
 from datetime import datetime
+import os
 
 
 class RekapApp(App):
@@ -33,28 +18,29 @@ class RekapApp(App):
     def build(self):
         root = BoxLayout(orientation='vertical', padding=10, spacing=10)
 
-        # ===== TITLE =====
         title = Label(
             text="Rekap Data Ruijie Pro",
-            size_hint=(1, 0.1)
+            size_hint=(1, 0.1),
+            bold=True
         )
         root.add_widget(title)
 
-        # ===== HASIL (SCROLL) =====
+        # area hasil
         self.result_label = Label(
             text="Silakan pilih file Excel...",
             size_hint_y=None,
-            valign='top'
+            halign="left",
+            valign="top"
         )
         self.result_label.bind(
-            texture_size=self.result_label.setter('size')
+            texture_size=lambda instance, value: setattr(instance, 'height', value[1])
         )
 
-        scroll = ScrollView(size_hint=(1, 0.8))
+        scroll = ScrollView()
         scroll.add_widget(self.result_label)
         root.add_widget(scroll)
 
-        # ===== BUTTON DI BAWAH =====
+        # tombol bawah
         btn = Button(
             text="Pilih File Excel",
             size_hint=(1, 0.1)
@@ -64,49 +50,51 @@ class RekapApp(App):
 
         return root
 
-    # =============================
-    # FILE PICKER
-    # =============================
+    # ===============================
+    # 📂 buka file chooser
+    # ===============================
     def buka_file(self, instance):
-        try:
-            start_path = "/storage/emulated/0/Download"
-            if not os.path.exists(start_path):
-                start_path = "/sdcard/Download"
 
-            chooser = FileChooserListView(
-                path=start_path,
-                filters=["*.xlsx"]
-            )
+        # tentukan path android
+        start_path = self.get_android_path()
 
-            popup = Popup(
-                title="Pilih File Excel",
-                content=chooser,
-                size_hint=(0.95, 0.95)
-            )
+        chooser = FileChooserListView(
+            path=start_path,
+            filters=["*.xlsx"],  # 🔥 filter excel
+        )
 
-            chooser.bind(
-                on_submit=lambda x, sel, touch:
-                self.proses_file(sel, popup)
-            )
+        popup = Popup(
+            title="Pilih File Excel",
+            content=chooser,
+            size_hint=(0.95, 0.95)
+        )
 
-            popup.open()
+        chooser.bind(
+            on_submit=lambda ch, sel, touch: self.proses_file(sel, popup)
+        )
 
-        except Exception as e:
-            self.result_label.text = f"Gagal membuka file picker:\n{e}"
+        popup.open()
 
-    # =============================
-    # PROSES FILE
-    # =============================
+    # ===============================
+    # 📱 path android download
+    # ===============================
+    def get_android_path(self):
+        if platform == "android":
+            return "/storage/emulated/0/Download"
+        return os.getcwd()
+
+    # ===============================
+    # 📊 proses excel
+    # ===============================
     def proses_file(self, selection, popup):
         if not selection:
-            self.result_label.text = "Tidak ada file dipilih."
             return
 
         file_path = selection[0]
         popup.dismiss()
 
         try:
-            wb = load_workbook(file_path, data_only=True)
+            wb = load_workbook(file_path)
             sheet = wb.active
         except Exception as e:
             self.result_label.text = f"Gagal membuka file:\n{e}"
@@ -121,7 +109,7 @@ class RekapApp(App):
             kolom_grup = header.index("Grup pengguna")
             kolom_harga = header.index("Harga")
             kolom_tanggal = header.index("Diaktifkan di")
-        except ValueError:
+        except Exception:
             self.result_label.text = (
                 "Header tidak sesuai!\n"
                 "Pastikan ada:\n"
@@ -131,34 +119,36 @@ class RekapApp(App):
             )
             return
 
-        # =============================
-        # LOOP DATA
-        # =============================
+        # ===============================
+        # loop data
+        # ===============================
         for row in sheet.iter_rows(min_row=2, values_only=True):
             grup = row[kolom_grup]
             harga = row[kolom_harga]
             tanggal_full = row[kolom_tanggal]
 
-            if grup and harga and tanggal_full:
+            if not (grup and harga and tanggal_full):
+                continue
 
-                if isinstance(tanggal_full, datetime):
-                    tanggal = tanggal_full.strftime("%Y/%m/%d")
-                else:
-                    tanggal = str(tanggal_full).split(" ")[0]
+            # format tanggal
+            if isinstance(tanggal_full, datetime):
+                tanggal = tanggal_full.strftime("%Y/%m/%d")
+            else:
+                tanggal = str(tanggal_full).split(" ")[0]
 
-                try:
-                    harga_int = int(float(str(harga).replace(",", "").replace(".", "")))
-                except Exception:
-                    continue
+            try:
+                harga_int = int(harga)
+            except:
+                continue
 
-                key = (tanggal, grup)
-                rekap_detail[key]["jumlah"] += 1
-                rekap_detail[key]["total"] += harga_int
-                rekap_tanggal[tanggal] += harga_int
+            key = (tanggal, grup)
+            rekap_detail[key]["jumlah"] += 1
+            rekap_detail[key]["total"] += harga_int
+            rekap_tanggal[tanggal] += harga_int
 
-        # =============================
-        # FORMAT HASIL
-        # =============================
+        # ===============================
+        # format hasil
+        # ===============================
         hasil = "===== HASIL REKAP =====\n\n"
         tanggal_terakhir = None
 
