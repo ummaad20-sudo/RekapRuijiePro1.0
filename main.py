@@ -6,11 +6,16 @@ from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.popup import Popup
 from kivy.utils import platform
+from kivy.clock import Clock
 
 from openpyxl import load_workbook
 from collections import defaultdict
 from datetime import datetime
 import os
+
+# 🔥 ANDROID PERMISSION
+if platform == "android":
+    from android.permissions import request_permissions, Permission
 
 
 class RekapApp(App):
@@ -20,47 +25,53 @@ class RekapApp(App):
 
         title = Label(
             text="Rekap Data Ruijie Pro",
-            size_hint=(1, 0.1),
-            bold=True
+            size_hint=(1, 0.1)
         )
         root.add_widget(title)
 
-        # area hasil
         self.result_label = Label(
-            text="Silakan pilih file Excel...",
+            text="Menunggu file Excel...",
             size_hint_y=None,
             halign="left",
             valign="top"
         )
         self.result_label.bind(
-            texture_size=lambda instance, value: setattr(instance, 'height', value[1])
+            texture_size=lambda inst, val: setattr(inst, 'height', val[1])
         )
 
         scroll = ScrollView()
         scroll.add_widget(self.result_label)
         root.add_widget(scroll)
 
-        # tombol bawah
-        btn = Button(
-            text="Pilih File Excel",
-            size_hint=(1, 0.1)
-        )
+        btn = Button(text="Pilih File Excel", size_hint=(1, 0.1))
         btn.bind(on_press=self.buka_file)
         root.add_widget(btn)
+
+        # 🔥 minta permission saat start
+        Clock.schedule_once(self.request_android_permissions, 1)
 
         return root
 
     # ===============================
-    # 📂 buka file chooser
+    # 🔐 REQUEST PERMISSION
+    # ===============================
+    def request_android_permissions(self, dt):
+        if platform == "android":
+            request_permissions([
+                Permission.READ_EXTERNAL_STORAGE,
+                Permission.WRITE_EXTERNAL_STORAGE
+            ])
+
+    # ===============================
+    # 📂 buka file
     # ===============================
     def buka_file(self, instance):
 
-        # tentukan path android
         start_path = self.get_android_path()
 
         chooser = FileChooserListView(
             path=start_path,
-            filters=["*.xlsx"],  # 🔥 filter excel
+            filters=["*.xlsx", "*.xls"],
         )
 
         popup = Popup(
@@ -76,7 +87,7 @@ class RekapApp(App):
         popup.open()
 
     # ===============================
-    # 📱 path android download
+    # 📱 path android
     # ===============================
     def get_android_path(self):
         if platform == "android":
@@ -100,75 +111,19 @@ class RekapApp(App):
             self.result_label.text = f"Gagal membuka file:\n{e}"
             return
 
-        rekap_detail = defaultdict(lambda: {"jumlah": 0, "total": 0})
-        rekap_tanggal = defaultdict(int)
+        rekap = defaultdict(int)
 
-        header = [cell.value for cell in sheet[1]]
-
-        try:
-            kolom_grup = header.index("Grup pengguna")
-            kolom_harga = header.index("Harga")
-            kolom_tanggal = header.index("Diaktifkan di")
-        except Exception:
-            self.result_label.text = (
-                "Header tidak sesuai!\n"
-                "Pastikan ada:\n"
-                "- Grup pengguna\n"
-                "- Harga\n"
-                "- Diaktifkan di"
-            )
-            return
-
-        # ===============================
-        # loop data
-        # ===============================
         for row in sheet.iter_rows(min_row=2, values_only=True):
-            grup = row[kolom_grup]
-            harga = row[kolom_harga]
-            tanggal_full = row[kolom_tanggal]
-
-            if not (grup and harga and tanggal_full):
-                continue
-
-            # format tanggal
-            if isinstance(tanggal_full, datetime):
-                tanggal = tanggal_full.strftime("%Y/%m/%d")
-            else:
-                tanggal = str(tanggal_full).split(" ")[0]
-
             try:
-                harga_int = int(harga)
+                tanggal = str(row[11])[:10]
+                harga = int(row[4])
+                rekap[tanggal] += harga
             except:
                 continue
 
-            key = (tanggal, grup)
-            rekap_detail[key]["jumlah"] += 1
-            rekap_detail[key]["total"] += harga_int
-            rekap_tanggal[tanggal] += harga_int
-
-        # ===============================
-        # format hasil
-        # ===============================
         hasil = "===== HASIL REKAP =====\n\n"
-        tanggal_terakhir = None
-
-        for (tanggal, grup), data in sorted(rekap_detail.items()):
-
-            if tanggal_terakhir and tanggal != tanggal_terakhir:
-                hasil += f">>> TOTAL {tanggal_terakhir} : Rp {rekap_tanggal[tanggal_terakhir]:,}\n"
-                hasil += "-----------------------------\n"
-
-            if tanggal != tanggal_terakhir:
-                hasil += f"\nTanggal : {tanggal}\n"
-
-            hasil += f"  Grup   : {grup}\n"
-            hasil += f"  Jumlah : {data['jumlah']}\n"
-            hasil += f"  Total  : Rp {data['total']:,}\n\n"
-
-            tanggal_terakhir = tanggal
-
-        if tanggal_terakhir:
-            hasil += f">>> TOTAL {tanggal_terakhir} : Rp {rekap_tanggal[tanggal_terakhir]:,}\n"
+        for tgl, total in sorted(rekap.items()):
+            hasil += f"{tgl} : Rp {total:,}\n"
 
         self.result_label.text = hasil
 
